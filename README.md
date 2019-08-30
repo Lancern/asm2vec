@@ -38,7 +38,7 @@ import asm2vec
 
 In the early versions of this implementation, you have to build the control flow graph by your own:
 
-```
+```python
 from asm2vec.asm import BasicBlock
 from asm2vec.asm import Function
 from asm2vec.asm import parse_instruction
