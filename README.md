@@ -87,3 +87,7 @@ The example below uses 3 hyper parameters of `asm2vec` model: `d`, `initial_alph
 | `rnd_walks`             | `int`   | How many random walks to perform to sequentialize a function?                                         | `3`           |
 | `neg_samples`           | `int`   | How many samples to take during negative sampling?                                                    | `25`          |
 | `iteration`             | `int`   | How many iteration to perform? (This parameter is reserved for future use and is not implemented now) | `1`           |
+
+## Notes
+
+For simplicity, the Selective Callee Expansion is not implemented in this early implementation. You have to do it manually before sending CFG into `asm2vec` .

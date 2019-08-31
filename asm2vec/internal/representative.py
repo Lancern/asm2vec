@@ -29,7 +29,7 @@ class SequentialFunction:
 
 
 class VectorizedFunction:
-    def __init__(self, f: SequentialFunction, v: np.ndarray = None, dim: int = 200):
+    def __init__(self, f: SequentialFunction, v: np.ndarray = None, dim: int = 400):
         self._f = f
         self.v = v if v is not None else _make_small_ndarray(dim)
 
