@@ -15,7 +15,7 @@ python3 -m pip install numpy
 To install the package, execute the following commands:
 
 ```shell
-git clone https://github.com/lancern/asm2vec
+git clone https://github.com/lancern/asm2vec.git
 ```
 
 Add the following line to the `.bashrc` file to add `asm2vec` to your python interpreter's search path for external packages:
@@ -24,7 +24,7 @@ Add the following line to the `.bashrc` file to add `asm2vec` to your python int
 export PYTHONPATH="path/to/asm2vec:$PYTHONPATH"
 ```
 
-Replacement `path/to/asm2vec` with the directory you clone `asm2vec` into. Then execute the following commands to update `PYTHONPATH`:
+Replace `path/to/asm2vec` with the directory you clone `asm2vec` into. Then execute the following commands to update `PYTHONPATH`:
 
 ```shell
 source ~/.bashrc
