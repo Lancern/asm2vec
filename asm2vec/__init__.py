@@ -1,1 +1,1 @@
-__all__ = ['asm', 'model']
+__all__ = ['asm', 'model', 'parse']
