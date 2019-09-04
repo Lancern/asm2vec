@@ -161,7 +161,23 @@ class CFGBuilder:
             if func_name not in func_entries:
                 func_entries[func_name] = self._block_labels[func_name]
 
-        return list(map(lambda kv: asm2vec.asm.Function(self._blocks[kv[1]], kv[0]), func_entries.items()))
+        funcs: Dict[str, asm2vec.asm.Function] = \
+            dict(map(lambda x: (x[0], asm2vec.asm.Function(self._blocks[x[1]], x[0])), func_entries.items()))
+
+        # Fix function call relation.
+        for (name, f) in funcs.items():
+            def block_action(block: asm2vec.asm.BasicBlock) -> None:
+                for instr in block:
+                    if is_call(instr.op()):
+                        callee_name = instr.args()[0]
+                        if callee_name in funcs:
+                            f.add_callee(funcs[callee_name])
+
+            asm2vec.asm.walk_cfg(f.entry(), block_action)
+
+        # TODO: Implement Selective Callee Expansion here.
+
+        return list(funcs.values())
 
 
 class ParseOptions:

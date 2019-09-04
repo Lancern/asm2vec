@@ -53,3 +53,10 @@ class ParseTest(ut.TestCase):
         funcs = asm2vec.parse.parse_text(test_asm, func_names=['main', 'my_strlen'])
         self.assertEqual(2, len(funcs))
         self.assertEqual({'main', 'my_strlen'}, set(map(lambda f: f.name(), funcs)))
+
+        funcs = dict(map(lambda f: (f.name(), f), funcs))
+        main_func: asm2vec.asm.Function = funcs['main']
+        my_strlen_func: asm2vec.asm.Function = funcs['my_strlen']
+
+        self.assertListEqual(['my_strlen'], list(map(lambda f: f.name(), main_func.callees())))
+        self.assertListEqual(['main'], list(map(lambda f: f.name(), my_strlen_func.callers())))
