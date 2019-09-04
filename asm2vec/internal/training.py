@@ -14,7 +14,7 @@ from asm2vec.internal.sampling import NegativeSampler
 class Asm2VecParams:
     def __init__(self, **kwargs):
         self.d: int = kwargs.get('d', 200)
-        self.initial_alpha: float = kwargs.get('alpha', 0.05)
+        self.initial_alpha: float = kwargs.get('alpha', 0.0025)
         self.alpha_update_interval: int = kwargs.get('alpha_update_interval', 10000)
         self.num_of_rnd_walks: int = kwargs.get('rnd_walks', 3)
         self.neg_samples: int = kwargs.get('neg_samples', 25)
@@ -220,7 +220,7 @@ def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: Train
         if len(wnd.next_ins_args()) > 0:
             next_args_grad = f_grad[d:] / len(wnd.next_ins_args())
             for t in wnd.next_ins_args():
-                t.v += next_args_grad
+                t.v -= next_args_grad
 
 
 def _train_sequence(f: VectorizedFunction, seq: List[Instruction], context: TrainingContext) -> None:
