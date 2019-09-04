@@ -1,14 +1,14 @@
 from typing import *
+import math
 
 import numpy as np
 
 from asm2vec.asm import Instruction
 from asm2vec.internal.representative import FunctionRepository
 from asm2vec.internal.representative import VectorizedFunction
+from asm2vec.internal.representative import Token
 from asm2vec.internal.representative import VectorizedToken
 from asm2vec.internal.sampling import NegativeSampler
-from asm2vec.internal.typing import InstructionSequence
-from asm2vec.internal.typing import Vocabulary
 
 
 class Asm2VecParams:
@@ -26,7 +26,7 @@ class SequenceWindow:
                      VectorizedToken, List[VectorizedToken],
                      VectorizedToken, List[VectorizedToken]]
 
-    def __init__(self, sequence: InstructionSequence, vocabulary: Vocabulary):
+    def __init__(self, sequence: List[Instruction], vocabulary: Dict[str, Token]):
         self._seq = sequence
         self._vocab = vocabulary
         self._i = 1
@@ -112,7 +112,7 @@ class TrainingContext:
         self._repo = repo
         self._params = params
         self._alpha = params.initial_alpha
-        self._sampler = NegativeSampler(map(lambda t: (t, t.frequency), repo.vocab().values()))
+        self._sampler = NegativeSampler(list(map(lambda t: (t, t.frequency), repo.vocab().values())))
         self._is_estimating = is_estimating
         self._counters = dict()
 
@@ -134,7 +134,7 @@ class TrainingContext:
     def is_estimating(self) -> bool:
         return self._is_estimating
 
-    def create_sequence_window(self, seq: InstructionSequence) -> SequenceWindow:
+    def create_sequence_window(self, seq: List[Instruction]) -> SequenceWindow:
         return SequenceWindow(seq, self._repo.vocab())
 
     def get_counter(self, name: str) -> Counter:
@@ -148,6 +148,8 @@ class TrainingContext:
 
 def _sigmoid(x: float) -> float:
     e = np.exp(x)
+    if math.isinf(e):
+        return 1 if e > 0 else 0
     return e / (1 + e)
 
 
@@ -156,75 +158,72 @@ def _identity(cond: bool) -> int:
 
 
 def _dot_sigmoid(lhs: np.ndarray, rhs: np.ndarray) -> float:
-    # Suppress PyTypeChecker for the following statement since the type checker gives wrong result.
     # noinspection PyTypeChecker
     return _sigmoid(np.dot(lhs, rhs))
 
 
-def _get_inst_repr(op: VectorizedToken, args: Iterable[VectorizedToken]) -> np.ndarray:
-    return np.hstack(op.v, np.average(list(map(lambda tk: tk.v, args)), axis=0))
-
-
-def _get_function_grad(samples: Iterable[VectorizedToken], current_token: VectorizedToken,
-                       delta: np.ndarray) -> np.ndarray:
-    neu = np.sum(list(map(
-        lambda t: _identity(t == current_token) - _dot_sigmoid(current_token.v_pred, delta),
-        samples)), axis=0)
-    return neu / 3 * current_token.v_pred
-
-
-def _get_target_grad(target: VectorizedToken, current_token: VectorizedToken, delta: np.ndarray) -> np.ndarray:
-    return _identity(target == current_token) - _dot_sigmoid(target.v_pred, delta) * delta
+def _get_inst_repr(op: VectorizedToken, args: List[VectorizedToken]) -> np.ndarray:
+    if len(args) == 0:
+        arg_vec = np.zeros(len(op.v))
+    else:
+        arg_vec = np.average(list(map(lambda tk: tk.v, args)), axis=0)
+    return np.hstack((op.v, arg_vec))
 
 
 def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: TrainingContext) -> None:
     ct_prev = _get_inst_repr(wnd.prev_ins_op(), wnd.prev_ins_args())
     ct_next = _get_inst_repr(wnd.next_ins_op(), wnd.next_ins_args())
-    delta = np.average((ct_prev, f, ct_next))
+    delta = np.average([ct_prev, f.v, ct_next], axis=0)
 
     tokens = [wnd.curr_ins_op()] + wnd.curr_ins_args()
 
     f_grad = np.zeros(f.v.shape)
     for tk in tokens:
-        targets: Dict[str, VectorizedToken] = \
+        # Negative sampling.
+        sampled_tokens: Dict[str, VectorizedToken] = \
             dict(map(lambda x: (x.name(), x.vectorized()), context.sampler().sample(context.params().neg_samples)))
-        if tk.name() not in targets:
-            targets[tk.name()] = tk
+        if tk.name() not in sampled_tokens:
+            sampled_tokens[tk.name()] = tk
 
-        tokens_handled_counter = context.get_counter(TrainingContext.TOKENS_HANDLED_COUNTER)
-        if tokens_handled_counter.val() % context.params().alpha_update_interval == 0:
-            # Update the learning rate.
-            alpha = 1 - tokens_handled_counter.val() / (
-                    context.params().iteration * context.repo().num_of_tokens() + 1)
-            context.set_alpha(max(alpha, context.params().initial_alpha * 0.0001))
+        # The following code block tries to update the learning rate when necessary. Not required for now.
+        # tokens_handled_counter = context.get_counter(TrainingContext.TOKENS_HANDLED_COUNTER)
+        # if tokens_handled_counter is not None:
+        #     if tokens_handled_counter.val() % context.params().alpha_update_interval == 0:
+        #         # Update the learning rate.
+        #         alpha = 1 - tokens_handled_counter.val() / (
+        #                 context.params().iteration * context.repo().num_of_tokens() + 1)
+        #         context.set_alpha(max(alpha, context.params().initial_alpha * 0.0001))
 
-        # Compute and accumulate gradient of function vector.
-        f_grad += _get_function_grad(targets.values(), tk, delta)
+        for sp_tk in sampled_tokens.values():
+            # Accumulate gradient for function vector.
+            g = (_identity(tk is sp_tk) - _dot_sigmoid(delta, tk.v_pred)) * context.alpha()
+            f_grad += g / 3 * tk.v_pred
 
-        if not context.is_estimating():
-            # Compute and apply gradient of current token's vector.
-            for t in targets.values():
-                t.v_pred -= context.alpha() * _get_target_grad(t, tk, delta)
+            if not context.is_estimating():
+                # Update v'_t
+                tk.v_pred -= g * delta
 
     # Apply function gradient.
-    f.v -= context.alpha() * f_grad
+    f.v -= f_grad
 
     if not context.is_estimating():
-        # Apply instruction gradient.
-        d = len(wnd.prev_ins_op().v)
+        # Apply gradient to instructions.
+        d = len(f_grad) // 2
 
-        wnd.prev_ins_op().v -= context.alpha() * f_grad[:d]
-        prev_args_grad = f_grad[d:] / len(wnd.prev_ins_args()) * context.alpha()
-        for t in wnd.prev_ins_args():
-            t.v -= prev_args_grad
+        wnd.prev_ins_op().v -= f_grad[:d]
+        if len(wnd.prev_ins_args()) > 0:
+            prev_args_grad = f_grad[d:] / len(wnd.prev_ins_args())
+            for t in wnd.prev_ins_args():
+                t.v -= prev_args_grad
 
-        wnd.next_ins_op().v -= context.params().initial_alpha * f_grad[:d]
-        next_args_grad = f_grad[d:] / len(wnd.next_ins_args()) * context.alpha()
-        for t in wnd.next_ins_args():
-            t.v -= next_args_grad
+        wnd.next_ins_op().v -= f_grad[:d]
+        if len(wnd.next_ins_args()) > 0:
+            next_args_grad = f_grad[d:] / len(wnd.next_ins_args())
+            for t in wnd.next_ins_args():
+                t.v += next_args_grad
 
 
-def _train_sequence(f: VectorizedFunction, seq: InstructionSequence, context: TrainingContext) -> None:
+def _train_sequence(f: VectorizedFunction, seq: List[Instruction], context: TrainingContext) -> None:
     wnd = context.create_sequence_window(seq)
 
     try:

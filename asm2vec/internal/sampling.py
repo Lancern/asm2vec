@@ -5,7 +5,7 @@ T = TypeVar('T')
 
 
 class NegativeSampler:
-    def __init__(self, distribution: Iterable[Tuple[T, float]], alpha: float = 3 / 4):
+    def __init__(self, distribution: List[Tuple[T, float]], alpha: float = 3 / 4):
         self._values = list(map(lambda x: x[0], distribution))
         self._weights = list(map(lambda x: x[1] ** alpha, distribution))
 

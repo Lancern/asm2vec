@@ -11,9 +11,9 @@ def cosine_similarity(v1, v2):
 
 def main():
     training_funcs = asm2vec.parse.parse('training.s',
-                                         func_names=['main', 'my_strlen_train', 'my_strcmp_train', 'my_atoi_train'])
+                                         func_names=['main', 'my_strlen_train', 'my_strcmp_train'])
     estimating_funcs = asm2vec.parse.parse('estimating.s',
-                                           func_names=['main', 'my_strlen_est', 'my_strcmp_est', 'my_atoi_est'])
+                                           func_names=['main', 'my_strlen_est', 'my_strcmp_est'])
 
     print('# of training functions:', len(training_funcs))
     print('# of estimating functions:', len(estimating_funcs))

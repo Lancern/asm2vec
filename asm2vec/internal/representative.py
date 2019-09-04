@@ -3,11 +3,10 @@ from typing import *
 
 import numpy as np
 
+from asm2vec.asm import Instruction
 from asm2vec.asm import BasicBlock
 from asm2vec.asm import Function
 from asm2vec.asm import walk_cfg
-from asm2vec.internal.typing import InstructionSequence
-from asm2vec.internal.typing import Vocabulary
 from asm2vec.internal.utilities import permute
 
 
@@ -17,14 +16,14 @@ def _make_small_ndarray(dim: int) -> np.ndarray:
 
 
 class SequentialFunction:
-    def __init__(self, f: Function, sequences: List[InstructionSequence]):
+    def __init__(self, f: Function, sequences: List[List[Instruction]]):
         self._f = f
         self._seq = sequences
 
     def func(self) -> Function:
         return self._f
 
-    def sequences(self) -> List[InstructionSequence]:
+    def sequences(self) -> List[List[Instruction]]:
         return self._seq
 
 
@@ -70,7 +69,7 @@ class Token:
 
 
 class FunctionRepository:
-    def __init__(self, funcs: List[VectorizedFunction], vocab: Vocabulary, num_of_tokens: int):
+    def __init__(self, funcs: List[VectorizedFunction], vocab: Dict[str, Token], num_of_tokens: int):
         self._funcs = funcs
         self._vocab = vocab
         self._num_of_tokens = num_of_tokens
@@ -83,14 +82,14 @@ class FunctionRepository:
         self._funcs = permute(self._funcs, perm)
         return perm
 
-    def vocab(self) -> Vocabulary:
+    def vocab(self) -> Dict[str, Token]:
         return self._vocab
 
     def num_of_tokens(self) -> int:
         return self._num_of_tokens
 
 
-def _random_walk(f: Function) -> InstructionSequence:
+def _random_walk(f: Function) -> List[Instruction]:
     visited: Set[int] = set()
     current = f.entry()
     block_seq: List[BasicBlock] = []
@@ -98,15 +97,18 @@ def _random_walk(f: Function) -> InstructionSequence:
     while current.id() not in visited:
         visited.add(current.id())
         block_seq.append(current)
+        if len(current.successors()) == 0:
+            break
+
         current = random.choice(current.successors())
 
-    seq: InstructionSequence = []
+    seq: List[Instruction] = []
     for block in block_seq:
         seq += list(block)
     return seq
 
 
-def _edge_sampling(f: Function) -> List[InstructionSequence]:
+def _edge_sampling(f: Function) -> List[List[Instruction]]:
     edges: List[Tuple[BasicBlock, BasicBlock]] = []
 
     def collect_edges(block: BasicBlock) -> None:
@@ -127,7 +129,7 @@ def _edge_sampling(f: Function) -> List[InstructionSequence]:
 
 
 def make_sequential_function(f: Function, num_of_random_walks: int = 10) -> SequentialFunction:
-    seq: List[InstructionSequence] = []
+    seq: List[List[Instruction]] = []
 
     for _ in range(num_of_random_walks):
         seq.append(_random_walk(f))
@@ -151,7 +153,7 @@ def _get_function_tokens(f: Function, dim: int = 200) -> List[VectorizedToken]:
     return tokens
 
 
-def _make_function_repo_helper(vec_funcs: List[VectorizedFunction], vocab: Vocabulary, num_of_tokens: int,
+def _make_function_repo_helper(vec_funcs: List[VectorizedFunction], vocab: Dict[str, Token], num_of_tokens: int,
                                funcs: List[Function], dim: int, num_of_rnd_walks: int) -> FunctionRepository:
     for f in funcs:
         vec_funcs.append(VectorizedFunction(make_sequential_function(f, num_of_rnd_walks)))
@@ -174,7 +176,7 @@ def make_estimate_repo(trained_repo: FunctionRepository, f: Function,
                        dim: int, num_of_rnd_walks: int) -> FunctionRepository:
     # Make a copy of the function list and vocabulary to avoid the change to affect the original trained repo.
     vec_funcs: List[VectorizedFunction] = list(trained_repo.funcs())
-    vocab: Vocabulary = dict(**trained_repo.vocab())
+    vocab: Dict[str, Token] = dict(**trained_repo.vocab())
     num_of_tokens: int = trained_repo.num_of_tokens()
 
     return _make_function_repo_helper(vec_funcs, vocab, num_of_tokens, [f], dim, num_of_rnd_walks)
