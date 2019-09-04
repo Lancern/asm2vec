@@ -22,8 +22,14 @@ def main():
     training_funcs_vec = model.train(training_funcs)
     print('Training complete.')
 
+    for (tf, tfv) in zip(training_funcs, training_funcs_vec):
+        print('Norm of trained function "{}" = {}'.format(tf.name(), np.linalg.norm(tfv)))
+
     estimating_funcs_vec = list(map(lambda f: model.to_vec(f), estimating_funcs))
     print('Estimating complete.')
+
+    for (ef, efv) in zip(estimating_funcs, estimating_funcs_vec):
+        print('Norm of trained function "{}" = {}'.format(ef.name(), np.linalg.norm(efv)))
 
     for (tf, tfv) in zip(training_funcs, training_funcs_vec):
         for (ef, efv) in zip(estimating_funcs, estimating_funcs_vec):

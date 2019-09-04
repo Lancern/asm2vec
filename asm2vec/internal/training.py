@@ -22,21 +22,25 @@ class Asm2VecParams:
 
 
 class SequenceWindow:
-    ViewType = Tuple[VectorizedToken, List[VectorizedToken],
-                     VectorizedToken, List[VectorizedToken],
-                     VectorizedToken, List[VectorizedToken]]
-
     def __init__(self, sequence: List[Instruction], vocabulary: Dict[str, Token]):
         self._seq = sequence
         self._vocab = vocabulary
         self._i = 1
 
-    def __iter__(self):
-        return self
+        self._prev_ins = None
+        self._curr_ins = None
+        self._next_ins = None
 
-    def __next__(self) -> ViewType:
+        self._prev_ins_op = None
+        self._prev_ins_args = None
+        self._curr_ins_op = None
+        self._curr_ins_args = None
+        self._next_ins_op = None
+        self._next_ins_args = None
+
+    def move_next(self) -> bool:
         if self._i >= len(self._seq) - 1:
-            raise StopIteration()
+            return False
 
         def token_lookup(name) -> VectorizedToken:
             return self._vocab[name].vectorized()
@@ -52,13 +56,9 @@ class SequenceWindow:
         self._next_ins_op = token_lookup(self._next_ins.op())
         self._next_ins_args = list(map(token_lookup, self._next_ins.args()))
 
-        result = (self._prev_ins_op, self._prev_ins_args,
-                  self._curr_ins_op, self._curr_ins_args,
-                  self._next_ins_op, self._next_ins_args)
-
         self._i += 1
 
-        return result
+        return True
 
     def prev_ins(self) -> Instruction:
         return self._prev_ins
@@ -225,13 +225,8 @@ def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: Train
 
 def _train_sequence(f: VectorizedFunction, seq: List[Instruction], context: TrainingContext) -> None:
     wnd = context.create_sequence_window(seq)
-
-    try:
-        while True:
-            next(wnd)
-            _train_vectorized(wnd, f, context)
-    except StopIteration:
-        pass
+    while wnd.move_next():
+        _train_vectorized(wnd, f, context)
 
 
 def train(repository: FunctionRepository, params: Asm2VecParams) -> None:
