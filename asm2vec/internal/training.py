@@ -22,6 +22,7 @@ class Asm2VecParams:
         self.num_of_rnd_walks: int = kwargs.get('rnd_walks', 3)
         self.neg_samples: int = kwargs.get('neg_samples', 25)
         self.iteration: int = kwargs.get('iteration', 1)
+        self.jobs: int = kwargs.get('jobs', 4)
 
 
 class SequenceWindow:

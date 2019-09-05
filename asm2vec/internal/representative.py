@@ -1,5 +1,6 @@
 import random
 from typing import *
+import concurrent.futures
 
 import numpy as np
 
@@ -7,8 +8,9 @@ from asm2vec.asm import Instruction
 from asm2vec.asm import BasicBlock
 from asm2vec.asm import Function
 from asm2vec.asm import walk_cfg
-from asm2vec.logging import asm2vec_logger
 from asm2vec.internal.utilities import permute
+from asm2vec.internal.atomic import Atomic
+from asm2vec.logging import asm2vec_logger
 
 
 def _make_small_ndarray(dim: int) -> np.ndarray:
@@ -159,28 +161,44 @@ def _get_function_tokens(f: Function, dim: int = 200) -> List[VectorizedToken]:
 
 
 def _make_function_repo_helper(vec_funcs: List[VectorizedFunction], vocab: Dict[str, Token], num_of_tokens: int,
-                               funcs: List[Function], dim: int, num_of_rnd_walks: int) -> FunctionRepository:
-    progress = 1
+                               funcs: List[Function], dim: int, num_of_rnd_walks: int, jobs: int) -> FunctionRepository:
+    progress = Atomic(1)
 
-    for f in funcs:
-        vec_funcs.append(VectorizedFunction(make_sequential_function(f, num_of_rnd_walks)))
+    vec_funcs_atomic = Atomic(vec_funcs)
+    vocab_atomic = Atomic(vocab)
+    num_of_tokens_atomic = Atomic(num_of_tokens)
+
+    def func_handler(f: Function):
+        with vec_funcs_atomic.lock() as vfa:
+            vfa.value().append(VectorizedFunction(make_sequential_function(f, num_of_rnd_walks)))
+
         tokens = _get_function_tokens(f, dim)
-        num_of_tokens += len(tokens)
+        with num_of_tokens_atomic.lock() as nta:
+            nta.set(nta.value() + len(tokens))
+
         for tk in tokens:
-            if tk.name() in vocab:
-                vocab[tk.name()].count += 1
-            else:
-                vocab[tk.name()] = Token(tk)
+            with vocab_atomic.lock() as va:
+                if tk.name() in va.value():
+                    va.value()[tk.name()].count += 1
+                else:
+                    va.value()[tk.name()] = Token(tk)
 
         asm2vec_logger().debug('Sequence generated for function "%s", progress: %f%%',
-                               f.name(), progress / len(funcs) * 100)
-        progress += 1
+                               f.name(), progress.value() / len(funcs) * 100)
+        with progress.lock() as prog:
+            prog.set(prog.value() + 1)
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=jobs)
+    fs = []
+    for fn in funcs:
+        fs.append(executor.submit(func_handler, fn))
+    concurrent.futures.wait(fs)
 
     return FunctionRepository(vec_funcs, vocab, num_of_tokens)
 
 
-def make_function_repo(funcs: List[Function], dim: int, num_of_rnd_walks: int) -> FunctionRepository:
-    return _make_function_repo_helper([], dict(), 0, funcs, dim, num_of_rnd_walks)
+def make_function_repo(funcs: List[Function], dim: int, num_of_rnd_walks: int, jobs: int) -> FunctionRepository:
+    return _make_function_repo_helper([], dict(), 0, funcs, dim, num_of_rnd_walks, jobs)
 
 
 def make_estimate_repo(trained_repo: FunctionRepository, f: Function,
@@ -190,4 +208,4 @@ def make_estimate_repo(trained_repo: FunctionRepository, f: Function,
     vocab: Dict[str, Token] = dict(**trained_repo.vocab())
     num_of_tokens: int = trained_repo.num_of_tokens()
 
-    return _make_function_repo_helper(vec_funcs, vocab, num_of_tokens, [f], dim, num_of_rnd_walks)
+    return _make_function_repo_helper(vec_funcs, vocab, num_of_tokens, [f], dim, num_of_rnd_walks, 1)

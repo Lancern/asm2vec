@@ -15,7 +15,7 @@ class Asm2Vec:
         self._repo = None
 
     def train(self, funcs: List[Function]) -> List[np.ndarray]:
-        self._repo = make_function_repo(funcs, self._params.d, self._params.num_of_rnd_walks)
+        self._repo = make_function_repo(funcs, self._params.d, self._params.num_of_rnd_walks, self._params.jobs)
 
         # Calculate the frequency of each token.
         total_tokens: int = sum(map(lambda x: x.count, self._repo.vocab().values()))
