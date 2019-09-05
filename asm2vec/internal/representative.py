@@ -7,6 +7,7 @@ from asm2vec.asm import Instruction
 from asm2vec.asm import BasicBlock
 from asm2vec.asm import Function
 from asm2vec.asm import walk_cfg
+from asm2vec.logging import asm2vec_logger
 from asm2vec.internal.utilities import permute
 
 
@@ -16,15 +17,22 @@ def _make_small_ndarray(dim: int) -> np.ndarray:
 
 
 class SequentialFunction:
-    def __init__(self, f: Function, sequences: List[List[Instruction]]):
+    def __init__(self, f: Function, sequences: List[List[BasicBlock]]):
         self._f = f
         self._seq = sequences
 
     def func(self) -> Function:
         return self._f
 
-    def sequences(self) -> List[List[Instruction]]:
+    def sequences(self) -> List[List[BasicBlock]]:
         return self._seq
+
+
+def flat_sequence(seq: List[BasicBlock]) -> List[Instruction]:
+    instr_seq = []
+    for block in seq:
+        instr_seq += list(block)
+    return instr_seq
 
 
 class VectorizedFunction:
@@ -89,7 +97,7 @@ class FunctionRepository:
         return self._num_of_tokens
 
 
-def _random_walk(f: Function) -> List[Instruction]:
+def _random_walk(f: Function) -> List[BasicBlock]:
     visited: Set[int] = set()
     current = f.entry()
     block_seq: List[BasicBlock] = []
@@ -102,13 +110,10 @@ def _random_walk(f: Function) -> List[Instruction]:
 
         current = random.choice(current.successors())
 
-    seq: List[Instruction] = []
-    for block in block_seq:
-        seq += list(block)
-    return seq
+    return block_seq
 
 
-def _edge_sampling(f: Function) -> List[List[Instruction]]:
+def _edge_sampling(f: Function) -> List[List[BasicBlock]]:
     edges: List[Tuple[BasicBlock, BasicBlock]] = []
 
     def collect_edges(block: BasicBlock) -> None:
@@ -123,13 +128,13 @@ def _edge_sampling(f: Function) -> List[List[Instruction]]:
     while len(visited_edges) < len(edges):
         e = random.choice(edges)
         visited_edges.add((e[0].id(), e[1].id()))
-        sequences.append(list(e[0]) + list(e[1]))
+        sequences.append([e[0], e[1]])
 
     return sequences
 
 
 def make_sequential_function(f: Function, num_of_random_walks: int = 10) -> SequentialFunction:
-    seq: List[List[Instruction]] = []
+    seq: List[List[BasicBlock]] = []
 
     for _ in range(num_of_random_walks):
         seq.append(_random_walk(f))
@@ -155,6 +160,8 @@ def _get_function_tokens(f: Function, dim: int = 200) -> List[VectorizedToken]:
 
 def _make_function_repo_helper(vec_funcs: List[VectorizedFunction], vocab: Dict[str, Token], num_of_tokens: int,
                                funcs: List[Function], dim: int, num_of_rnd_walks: int) -> FunctionRepository:
+    progress = 1
+
     for f in funcs:
         vec_funcs.append(VectorizedFunction(make_sequential_function(f, num_of_rnd_walks)))
         tokens = _get_function_tokens(f, dim)
@@ -164,6 +171,10 @@ def _make_function_repo_helper(vec_funcs: List[VectorizedFunction], vocab: Dict[
                 vocab[tk.name()].count += 1
             else:
                 vocab[tk.name()] = Token(tk)
+
+        asm2vec_logger().debug('Sequence generated for function "%s", progress: %f%%',
+                               f.name(), progress / len(funcs) * 100)
+        progress += 1
 
     return FunctionRepository(vec_funcs, vocab, num_of_tokens)
 

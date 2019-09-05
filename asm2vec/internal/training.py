@@ -4,11 +4,14 @@ import math
 import numpy as np
 
 from asm2vec.asm import Instruction
+from asm2vec.asm import BasicBlock
 from asm2vec.internal.representative import FunctionRepository
 from asm2vec.internal.representative import VectorizedFunction
 from asm2vec.internal.representative import Token
 from asm2vec.internal.representative import VectorizedToken
+from asm2vec.internal.representative import flat_sequence
 from asm2vec.internal.sampling import NegativeSampler
+from asm2vec.logging import asm2vec_logger
 
 
 class Asm2VecParams:
@@ -22,8 +25,8 @@ class Asm2VecParams:
 
 
 class SequenceWindow:
-    def __init__(self, sequence: List[Instruction], vocabulary: Dict[str, Token]):
-        self._seq = sequence
+    def __init__(self, sequence: List[BasicBlock], vocabulary: Dict[str, Token]):
+        self._seq = flat_sequence(sequence)
         self._vocab = vocabulary
         self._i = 1
 
@@ -134,7 +137,7 @@ class TrainingContext:
     def is_estimating(self) -> bool:
         return self._is_estimating
 
-    def create_sequence_window(self, seq: List[Instruction]) -> SequenceWindow:
+    def create_sequence_window(self, seq: List[BasicBlock]) -> SequenceWindow:
         return SequenceWindow(seq, self._repo.vocab())
 
     def get_counter(self, name: str) -> Counter:
@@ -223,7 +226,7 @@ def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: Train
                 t.v -= next_args_grad
 
 
-def _train_sequence(f: VectorizedFunction, seq: List[Instruction], context: TrainingContext) -> None:
+def _train_sequence(f: VectorizedFunction, seq: List[BasicBlock], context: TrainingContext) -> None:
     wnd = context.create_sequence_window(seq)
     while wnd.move_next():
         _train_vectorized(wnd, f, context)
@@ -233,9 +236,15 @@ def train(repository: FunctionRepository, params: Asm2VecParams) -> None:
     context = TrainingContext(repository, params)
     context.add_counter(TrainingContext.TOKENS_HANDLED_COUNTER)
 
+    asm2vec_logger().debug('Total number of functions: %d', len(context.repo().funcs()))
+    progress = 1
+
     for f in context.repo().funcs():
         for seq in f.sequential().sequences():
             _train_sequence(f, seq, context)
+
+        asm2vec_logger().debug('Functions trained: %d, progress: %d%%', progress, progress / len(context.repo().funcs()) * 100)
+        progress += 1
 
 
 def estimate(f: VectorizedFunction, estimate_repo: FunctionRepository, params: Asm2VecParams) -> np.ndarray:
