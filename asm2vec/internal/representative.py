@@ -141,7 +141,7 @@ def make_sequential_function(f: Function, num_of_random_walks: int = 10) -> Sequ
     for _ in range(num_of_random_walks):
         seq.append(_random_walk(f))
 
-    seq += _edge_sampling(f)
+    # seq += _edge_sampling(f)
 
     return SequentialFunction(f, seq)
 
@@ -192,7 +192,10 @@ def _make_function_repo_helper(vec_funcs: List[VectorizedFunction], vocab: Dict[
     fs = []
     for fn in funcs:
         fs.append(executor.submit(func_handler, fn))
-    concurrent.futures.wait(fs)
+    done, not_done = concurrent.futures.wait(fs, return_when=concurrent.futures.FIRST_EXCEPTION)
+
+    if len(not_done) > 0 or any(map(lambda fut: fut.cancelled() or not fut.done(), done)):
+        raise RuntimeError('Not all tasks finished successfully.')
 
     return FunctionRepository(vec_funcs, vocab, num_of_tokens)
 

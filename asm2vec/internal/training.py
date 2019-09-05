@@ -24,6 +24,17 @@ class Asm2VecParams:
         self.iteration: int = kwargs.get('iteration', 1)
         self.jobs: int = kwargs.get('jobs', 4)
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'd': self.d,
+            'alpha': self.initial_alpha,
+            'alpha_update_interval': self.alpha_update_interval,
+            'num_of_rnd_walks': self.num_of_rnd_walks,
+            'neg_samples': self.neg_samples,
+            'iteration': self.iteration,
+            'jobs': self.jobs
+        }
+
 
 class SequenceWindow:
     def __init__(self, sequence: List[BasicBlock], vocabulary: Dict[str, Token]):
@@ -244,7 +255,8 @@ def train(repository: FunctionRepository, params: Asm2VecParams) -> None:
         for seq in f.sequential().sequences():
             _train_sequence(f, seq, context)
 
-        asm2vec_logger().debug('Functions trained: %d, progress: %d%%', progress, progress / len(context.repo().funcs()) * 100)
+        asm2vec_logger().debug('Function "%s" trained, progress: %d%%',
+                               f.sequential().func().name(), progress / len(context.repo().funcs()) * 100)
         progress += 1
 
 
