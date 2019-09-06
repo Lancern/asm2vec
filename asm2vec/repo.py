@@ -118,34 +118,47 @@ def _deserialize_sequence(rep: List[Any]) -> List[asm2vec.asm.Instruction]:
     return list(map(lambda instr_rep: asm2vec.asm.Instruction(instr_rep[0], instr_rep[1]), rep))
 
 
-def serialize_vectorized_function(func: VectorizedFunction) -> Dict[str, Any]:
-    return {
-        'v': list(func.v),
-        'name': func.sequential().name(),
+def _serialize_vectorized_function(func: VectorizedFunction, include_sequences: bool) -> Dict[str, Any]:
+    data = {
         'id': func.sequential().id(),
-        'sequences': list(map(_serialize_sequence, func.sequential().sequences()))
+        'name': func.sequential().name(),
+        'v': list(func.v)
     }
 
+    if include_sequences:
+        data['sequences'] = list(map(_serialize_sequence, func.sequential().sequences()))
 
-def deserialize_vectorized_function(rep: Dict[str, Any]) -> VectorizedFunction:
-    v = np.array(rep['v'])
+    return data
+
+
+def _deserialize_vectorized_function(rep: Dict[str, Any]) -> VectorizedFunction:
     name = rep['name']
     fid = rep['id']
-    sequences = list(map(_deserialize_sequence, rep['sequences']))
+    v = np.array(rep['v'])
+    sequences = list(map(_deserialize_sequence, rep.get('sequences', [])))
     return VectorizedFunction(SequentialFunction(fid, name, sequences), v)
 
 
-def serialize_function_repo(repo: FunctionRepository, include_funcs: bool = False) -> Dict[str, Any]:
-    dumped = {
-        'vocab': serialize_vocabulary(repo.vocab())
-    }
-    if include_funcs:
-        dumped['funcs'] = list(map(serialize_vectorized_function, repo.funcs()))
+SERIALIZE_VOCABULARY: int = 1
+SERIALIZE_FUNCTION: int = 2
+SERIALIZE_FUNCTION_SEQUENCES: int = 4
+SERIALIZE_ALL: int = SERIALIZE_VOCABULARY | SERIALIZE_FUNCTION
 
-    return dumped
+
+def serialize_function_repo(repo: FunctionRepository, flags: int) -> Dict[str, Any]:
+    data = dict()
+    if (flags & SERIALIZE_VOCABULARY) != 0:
+        data['vocab'] = serialize_vocabulary(repo.vocab())
+    if (flags & SERIALIZE_FUNCTION) != 0:
+        include_sequences = ((flags & SERIALIZE_FUNCTION_SEQUENCES) != 0)
+        data['funcs'] = list(map(
+            lambda f: _serialize_vectorized_function(f, include_sequences),
+            repo.funcs()))
+
+    return data
 
 
 def deserialize_function_repo(rep: Dict[str, Any]) -> FunctionRepository:
-    funcs = list(map(deserialize_vectorized_function, rep.get('funcs', [])))
-    vocab = deserialize_vocabulary(rep['vocab'])
+    funcs = list(map(_deserialize_vectorized_function, rep.get('funcs', [])))
+    vocab = deserialize_vocabulary(rep.get('vocab', dict()))
     return FunctionRepository(funcs, vocab)
