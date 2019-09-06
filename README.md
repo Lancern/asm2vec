@@ -12,6 +12,8 @@ python3 -m pip install numpy
 
 ## How to use
 
+### Import
+
 To install the package, execute the following commands:
 
 ```shell
@@ -30,13 +32,22 @@ Replace `path/to/asm2vec` with the directory you clone `asm2vec` into. Then exec
 source ~/.bashrc
 ```
 
+You can also add the following code snippets to your python source code referring `asm2vec` to guide python interpreter finding the package successfully:
+
+```python
+import sys
+sys.path.append('path/to/asm2vec')
+```
+
 In your python code, use the following `import` statement to import this package:
 
 ```python
-import asm2vec
+import asm2vec.<module-name>
 ```
 
-In the early versions of this implementation, you have to build the control flow graph by your own:
+### Define CFGs And Training
+
+You have 2 approaches to define the binary program that will be sent to the `asm2vec` model. The first approach is to build the CFG manually, as shown below:
 
 ```python
 from asm2vec.asm import BasicBlock
@@ -63,30 +74,60 @@ f2 = Function(block3, 'another_func')
 f3 = Function(block4, 'estimate_func')
 ```
 
-You can create, train an `asm2vec` model and then estimate a test function by:
+And then you can train a model with the following code:
 
 ```python
 from asm2vec.model import Asm2Vec
 
-model = Asm2Vec(d=200, initial_alpha=0.005, rnd_walks=25)
-model.train([f1, f2])
-print(model.to_vec(f3))
+model = Asm2Vec(d=200)
+train_repo = model.make_function_repo([f1, f2, f3])
+model.train(train_repo)
 ```
 
-And it's done.
+The second approach is using the `parse` module provided by `asm2vec` to build CFGs automatically from an assembly code source file:
+
+```python
+from asm2vec.parse import parse_fp
+
+with open('source.asm', 'r') as fp:
+    funcs = parse_fp(fp)
+```
+
+And then you can train a model with the following code:
+
+```python
+from asm2vec.model import Asm2Vec
+
+model = Asm2Vec(d=200)
+train_repo = model.make_function_repo(funcs)
+model.train(train_repo)
+```
+
+### Estimation
+
+You can use the `asm2vec.model.Asm2Vec.to_vec` method to convert a function into its vector representation.
+
+### Serialization
+
+The implementation support serialization on many of its internal data structures so that you can serialize the internal state of a trained model into disk for future use.
+
+You can serialize two data structures to primitive data: the function repository and the model memento.
+
+> To be finished.
 
 ## Hyper Parameters
 
-The example below uses 3 hyper parameters of `asm2vec` model: `d`, `initial_alpha` and `rnd_walks`, which are set to `200`, `0.005`, `25` respectively. The following table lists all available hyper parameters:
+The constructor of `asm2vec.model.Asm2Vec` class accepts some keyword arguments as hyper parameters of the model. The following table lists all the hyper parameters available:
 
-| Parameter Name          | Type    | Meaning                                                                                               | Default Value |
-| ----------------------- | ------- | ----------------------------------------------------------------------------------------------------- | ------------- |
-| `d`                     | `int`   | The dimention of the vectors for tokens.                                                              | `200`         |
-| `initial_alpha`         | `float` | The initial learning rate.                                                                            | `0.05`        |
-| `alpha_update_interval` | `int`   | How many tokens can be processed before changing the learning rate?                                   | `10000`       |
-| `rnd_walks`             | `int`   | How many random walks to perform to sequentialize a function?                                         | `3`           |
-| `neg_samples`           | `int`   | How many samples to take during negative sampling?                                                    | `25`          |
-| `iteration`             | `int`   | How many iteration to perform? (This parameter is reserved for future use and is not implemented now) | `1`           |
+| Parameter Name          | Type    | Meaning                                                                                                                        | Default Value |
+| ----------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| `d`                     | `int`   | The dimention of the vectors for tokens.                                                                                       | `200`         |
+| `initial_alpha`         | `float` | The initial learning rate.                                                                                                     | `0.05`        |
+| `alpha_update_interval` | `int`   | How many tokens can be processed before changing the learning rate?                                                            | `10000`       |
+| `rnd_walks`             | `int`   | How many random walks to perform to sequentialize a function?                                                                  | `3`           |
+| `neg_samples`           | `int`   | How many samples to take during negative sampling?                                                                             | `25`          |
+| `iteration`             | `int`   | How many iterations to perform? (This parameter is reserved for future use and is not implemented now)                         | `1`           |
+| `jobs`                  | `int`   | How many tasks to execute concurrently during training? (This parameter is reserved for future use and is not implemented now) | `4`           |
 
 ## Notes
 
