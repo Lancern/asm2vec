@@ -4,12 +4,10 @@ import math
 import numpy as np
 
 from asm2vec.asm import Instruction
-from asm2vec.asm import BasicBlock
-from asm2vec.internal.representative import FunctionRepository
-from asm2vec.internal.representative import VectorizedFunction
-from asm2vec.internal.representative import Token
-from asm2vec.internal.representative import VectorizedToken
-from asm2vec.internal.representative import flat_sequence
+from asm2vec.internal.repr import FunctionRepository
+from asm2vec.internal.repr import VectorizedFunction
+from asm2vec.internal.repr import Token
+from asm2vec.internal.repr import VectorizedToken
 from asm2vec.internal.sampling import NegativeSampler
 from asm2vec.logging import asm2vec_logger
 
@@ -37,8 +35,8 @@ class Asm2VecParams:
 
 
 class SequenceWindow:
-    def __init__(self, sequence: List[BasicBlock], vocabulary: Dict[str, Token]):
-        self._seq = flat_sequence(sequence)
+    def __init__(self, sequence: List[Instruction], vocabulary: Dict[str, Token]):
+        self._seq = sequence
         self._vocab = vocabulary
         self._i = 1
 
@@ -149,7 +147,7 @@ class TrainingContext:
     def is_estimating(self) -> bool:
         return self._is_estimating
 
-    def create_sequence_window(self, seq: List[BasicBlock]) -> SequenceWindow:
+    def create_sequence_window(self, seq: List[Instruction]) -> SequenceWindow:
         return SequenceWindow(seq, self._repo.vocab())
 
     def get_counter(self, name: str) -> Counter:
@@ -238,7 +236,7 @@ def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: Train
                 t.v -= next_args_grad
 
 
-def _train_sequence(f: VectorizedFunction, seq: List[BasicBlock], context: TrainingContext) -> None:
+def _train_sequence(f: VectorizedFunction, seq: List[Instruction], context: TrainingContext) -> None:
     wnd = context.create_sequence_window(seq)
     while wnd.move_next():
         _train_vectorized(wnd, f, context)

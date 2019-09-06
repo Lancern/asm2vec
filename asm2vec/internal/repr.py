@@ -16,30 +16,24 @@ from asm2vec.logging import asm2vec_logger
 from asm2vec.internal.atomic import Atomic
 
 
-def flat_sequence(seq: List[BasicBlock]) -> List[Instruction]:
-    instr_seq = []
-    for block in seq:
-        instr_seq += list(block)
-    return instr_seq
-
-
-def _random_walk(f: Function) -> List[BasicBlock]:
+def _random_walk(f: Function) -> List[Instruction]:
     visited: Set[int] = set()
     current = f.entry()
-    block_seq: List[BasicBlock] = []
+    seq: List[Instruction] = []
 
     while current.id() not in visited:
         visited.add(current.id())
-        block_seq.append(current)
+        for instr in current:
+            seq.append(instr)
         if len(current.successors()) == 0:
             break
 
         current = random.choice(current.successors())
 
-    return block_seq
+    return seq
 
 
-def _edge_sampling(f: Function) -> List[List[BasicBlock]]:
+def _edge_sampling(f: Function) -> List[List[Instruction]]:
     edges: List[Tuple[BasicBlock, BasicBlock]] = []
 
     def collect_edges(block: BasicBlock) -> None:
@@ -54,13 +48,13 @@ def _edge_sampling(f: Function) -> List[List[BasicBlock]]:
     while len(visited_edges) < len(edges):
         e = random.choice(edges)
         visited_edges.add((e[0].id(), e[1].id()))
-        sequences.append([e[0], e[1]])
+        sequences.append(list(e[0]) + list(e[1]))
 
     return sequences
 
 
 def make_sequential_function(f: Function, num_of_random_walks: int = 10) -> SequentialFunction:
-    seq: List[List[BasicBlock]] = []
+    seq: List[List[Instruction]] = []
 
     for _ in range(num_of_random_walks):
         seq.append(_random_walk(f))
@@ -90,16 +84,12 @@ def _make_function_repo_helper(vocab: Dict[str, Token], funcs: List[Function],
 
     vec_funcs_atomic = Atomic([])
     vocab_atomic = Atomic(vocab)
-    num_of_tokens_atomic = Atomic(sum(map(lambda x: x.count, vocab.values())))
 
     def func_handler(f: Function):
         with vec_funcs_atomic.lock() as vfa:
             vfa.value().append(VectorizedFunction(make_sequential_function(f, num_of_rnd_walks)))
 
         tokens = _get_function_tokens(f, dim)
-        with num_of_tokens_atomic.lock() as nta:
-            nta.set(nta.value() + len(tokens))
-
         for tk in tokens:
             with vocab_atomic.lock() as va:
                 if tk.name() in va.value():
@@ -122,13 +112,11 @@ def _make_function_repo_helper(vocab: Dict[str, Token], funcs: List[Function],
         raise RuntimeError('Not all tasks finished successfully.')
 
     vec_funcs = vec_funcs_atomic.value()
-    num_of_tokens = num_of_tokens_atomic.value()
-    repo = FunctionRepository(vec_funcs, vocab, num_of_tokens)
+    repo = FunctionRepository(vec_funcs, vocab)
 
     # Re-calculate the frequency of each token.
-    num_of_tokens = num_of_tokens_atomic.value()
     for t in repo.vocab().values():
-        t.frequency = t.count / num_of_tokens
+        t.frequency = t.count / repo.num_of_tokens()
 
     return repo
 
