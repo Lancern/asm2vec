@@ -142,7 +142,7 @@ def _deserialize_vectorized_function(rep: Dict[str, Any]) -> VectorizedFunction:
 SERIALIZE_VOCABULARY: int = 1
 SERIALIZE_FUNCTION: int = 2
 SERIALIZE_FUNCTION_SEQUENCES: int = 4
-SERIALIZE_ALL: int = SERIALIZE_VOCABULARY | SERIALIZE_FUNCTION
+SERIALIZE_ALL: int = SERIALIZE_VOCABULARY | SERIALIZE_FUNCTION | SERIALIZE_FUNCTION_SEQUENCES
 
 
 def serialize_function_repo(repo: FunctionRepository, flags: int) -> Dict[str, Any]:
