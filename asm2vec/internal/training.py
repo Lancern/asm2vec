@@ -254,7 +254,7 @@ def train(repository: FunctionRepository, params: Asm2VecParams) -> None:
             _train_sequence(f, seq, context)
 
         asm2vec_logger().debug('Function "%s" trained, progress: %f%%',
-                               f.sequential().func().name(), progress / len(context.repo().funcs()) * 100)
+                               f.sequential().name(), progress / len(context.repo().funcs()) * 100)
         progress += 1
 
 

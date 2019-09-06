@@ -8,8 +8,8 @@ import asm2vec.internal.util
 
 
 class SequentialFunction:
-    def __init__(self, id: int, name: str, sequences: List[List[asm2vec.asm.Instruction]]):
-        self._id = id
+    def __init__(self, fid: int, name: str, sequences: List[List[asm2vec.asm.Instruction]]):
+        self._id = fid
         self._name = name
         self._seq = sequences
 

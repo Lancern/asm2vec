@@ -24,7 +24,7 @@ def main():
     print('Training complete.')
 
     for tf in training_repo.funcs():
-        print('Norm of trained function "{}" = {}'.format(tf.sequential().func().name(), np.linalg.norm(tf.v)))
+        print('Norm of trained function "{}" = {}'.format(tf.sequential().name(), np.linalg.norm(tf.v)))
 
     estimating_funcs_vec = list(map(lambda f: model.to_vec(f), estimating_funcs))
     print('Estimating complete.')
@@ -35,7 +35,7 @@ def main():
     for tf in training_repo.funcs():
         for (ef, efv) in zip(estimating_funcs, estimating_funcs_vec):
             sim = cosine_similarity(tf.v, efv)
-            print('sim("{}", "{}") = {}'.format(tf.sequential().func().name(), ef.name(), sim))
+            print('sim("{}", "{}") = {}'.format(tf.sequential().name(), ef.name(), sim))
 
 
 if __name__ == '__main__':

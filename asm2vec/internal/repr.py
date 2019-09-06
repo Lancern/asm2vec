@@ -61,7 +61,7 @@ def make_sequential_function(f: Function, num_of_random_walks: int = 10) -> Sequ
 
     # seq += _edge_sampling(f)
 
-    return SequentialFunction(f, seq)
+    return SequentialFunction(f.id(), f.name(), seq)
 
 
 def _get_function_tokens(f: Function, dim: int = 200) -> List[VectorizedToken]:
