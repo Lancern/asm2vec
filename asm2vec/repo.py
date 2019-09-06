@@ -1,5 +1,4 @@
 from typing import *
-import json
 
 import numpy as np
 
@@ -150,11 +149,3 @@ def deserialize_function_repo(rep: Dict[str, Any]) -> FunctionRepository:
     funcs = list(map(deserialize_vectorized_function, rep.get('funcs', [])))
     vocab = deserialize_vocabulary(rep['vocab'])
     return FunctionRepository(funcs, vocab)
-
-
-def serialize_function_repo_into(repo: FunctionRepository, fp, include_funcs: bool = False) -> None:
-    json.dump(serialize_function_repo(repo, include_funcs=include_funcs), fp)
-
-
-def deserialize_function_repo_from(fp) -> FunctionRepository:
-    return deserialize_function_repo(json.load(fp))

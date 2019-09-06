@@ -1,5 +1,4 @@
 from typing import *
-import json
 
 import numpy as np
 
@@ -16,17 +15,15 @@ class Asm2VecMemento:
         self.params: Optional[asm2vec.internal.training.Asm2VecParams] = None
         self.vocab: Optional[Dict[str, asm2vec.repo.Token]] = None
 
-    def serialize(self, fp) -> None:
-        d = {
+    def serialize(self) -> Dict[str, Any]:
+        return {
             'params': self.params.to_dict(),
             'vocab': asm2vec.repo.serialize_vocabulary(self.vocab)
         }
-        json.dump(d, fp)
 
-    def populate(self, fp) -> None:
-        d = json.load(fp)
-        self.params = asm2vec.internal.training.Asm2VecParams(**d['params'])
-        self.vocab = asm2vec.repo.deserialize_vocabulary(self.vocab)
+    def populate(self, rep: Dict[str, Any]) -> None:
+        self.params = asm2vec.internal.training.Asm2VecParams(**rep['params'])
+        self.vocab = asm2vec.repo.deserialize_vocabulary(rep['vocab'])
 
 
 class Asm2Vec:
