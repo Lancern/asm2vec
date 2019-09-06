@@ -2,32 +2,18 @@ import random
 from typing import *
 import concurrent.futures
 
-import numpy as np
-
 from asm2vec.asm import Instruction
 from asm2vec.asm import BasicBlock
 from asm2vec.asm import Function
 from asm2vec.asm import walk_cfg
-from asm2vec.internal.utilities import permute
-from asm2vec.internal.atomic import Atomic
+from asm2vec.repo import SequentialFunction
+from asm2vec.repo import VectorizedFunction
+from asm2vec.repo import VectorizedToken
+from asm2vec.repo import Token
+from asm2vec.repo import FunctionRepository
 from asm2vec.logging import asm2vec_logger
 
-
-def _make_small_ndarray(dim: int) -> np.ndarray:
-    rng = np.random.default_rng()
-    return (rng.random(dim) - 0.5) / dim
-
-
-class SequentialFunction:
-    def __init__(self, f: Function, sequences: List[List[BasicBlock]]):
-        self._f = f
-        self._seq = sequences
-
-    def func(self) -> Function:
-        return self._f
-
-    def sequences(self) -> List[List[BasicBlock]]:
-        return self._seq
+from asm2vec.internal.atomic import Atomic
 
 
 def flat_sequence(seq: List[BasicBlock]) -> List[Instruction]:
@@ -35,68 +21,6 @@ def flat_sequence(seq: List[BasicBlock]) -> List[Instruction]:
     for block in seq:
         instr_seq += list(block)
     return instr_seq
-
-
-class VectorizedFunction:
-    def __init__(self, f: SequentialFunction, v: np.ndarray = None, dim: int = 400):
-        self._f = f
-        self.v = v if v is not None else _make_small_ndarray(dim)
-
-    def sequential(self) -> SequentialFunction:
-        return self._f
-
-
-class VectorizedToken:
-    def __init__(self, name: str, v: np.ndarray = None, v_pred: np.ndarray = None, dim: int = 200):
-        self._name = name
-        self.v = v if v is not None else np.zeros(dim)
-        self.v_pred = v_pred if v_pred is not None else _make_small_ndarray(dim * 2)
-
-    def __eq__(self, other):
-        if not isinstance(other, VectorizedToken):
-            return False
-
-        return self._name == other._name
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def name(self) -> str:
-        return self._name
-
-
-class Token:
-    def __init__(self, vt: VectorizedToken, count: int = 1):
-        self._vt = vt
-        self.count: int = count
-        self.frequency: float = 0
-
-    def vectorized(self) -> VectorizedToken:
-        return self._vt
-
-    def name(self) -> str:
-        return self._vt.name()
-
-
-class FunctionRepository:
-    def __init__(self, funcs: List[VectorizedFunction], vocab: Dict[str, Token], num_of_tokens: int):
-        self._funcs = funcs
-        self._vocab = vocab
-        self._num_of_tokens = num_of_tokens
-
-    def funcs(self) -> List[VectorizedFunction]:
-        return self._funcs
-
-    def shuffle_funcs(self) -> List[int]:
-        perm = list(range(len(self._funcs)))
-        self._funcs = permute(self._funcs, perm)
-        return perm
-
-    def vocab(self) -> Dict[str, Token]:
-        return self._vocab
-
-    def num_of_tokens(self) -> int:
-        return self._num_of_tokens
 
 
 def _random_walk(f: Function) -> List[BasicBlock]:
@@ -160,13 +84,13 @@ def _get_function_tokens(f: Function, dim: int = 200) -> List[VectorizedToken]:
     return tokens
 
 
-def _make_function_repo_helper(vec_funcs: List[VectorizedFunction], vocab: Dict[str, Token], num_of_tokens: int,
-                               funcs: List[Function], dim: int, num_of_rnd_walks: int, jobs: int) -> FunctionRepository:
+def _make_function_repo_helper(vocab: Dict[str, Token], funcs: List[Function],
+                               dim: int, num_of_rnd_walks: int, jobs: int) -> FunctionRepository:
     progress = Atomic(1)
 
-    vec_funcs_atomic = Atomic(vec_funcs)
+    vec_funcs_atomic = Atomic([])
     vocab_atomic = Atomic(vocab)
-    num_of_tokens_atomic = Atomic(num_of_tokens)
+    num_of_tokens_atomic = Atomic(sum(map(lambda x: x.count, vocab.values())))
 
     def func_handler(f: Function):
         with vec_funcs_atomic.lock() as vfa:
@@ -197,18 +121,24 @@ def _make_function_repo_helper(vec_funcs: List[VectorizedFunction], vocab: Dict[
     if len(not_done) > 0 or any(map(lambda fut: fut.cancelled() or not fut.done(), done)):
         raise RuntimeError('Not all tasks finished successfully.')
 
-    return FunctionRepository(vec_funcs, vocab, num_of_tokens)
+    vec_funcs = vec_funcs_atomic.value()
+    num_of_tokens = num_of_tokens_atomic.value()
+    repo = FunctionRepository(vec_funcs, vocab, num_of_tokens)
+
+    # Re-calculate the frequency of each token.
+    num_of_tokens = num_of_tokens_atomic.value()
+    for t in repo.vocab().values():
+        t.frequency = t.count / num_of_tokens
+
+    return repo
 
 
 def make_function_repo(funcs: List[Function], dim: int, num_of_rnd_walks: int, jobs: int) -> FunctionRepository:
-    return _make_function_repo_helper([], dict(), 0, funcs, dim, num_of_rnd_walks, jobs)
+    return _make_function_repo_helper(dict(), funcs, dim, num_of_rnd_walks, jobs)
 
 
-def make_estimate_repo(trained_repo: FunctionRepository, f: Function,
+def make_estimate_repo(vocabulary: Dict[str, Token], f: Function,
                        dim: int, num_of_rnd_walks: int) -> FunctionRepository:
     # Make a copy of the function list and vocabulary to avoid the change to affect the original trained repo.
-    vec_funcs: List[VectorizedFunction] = list(trained_repo.funcs())
-    vocab: Dict[str, Token] = dict(**trained_repo.vocab())
-    num_of_tokens: int = trained_repo.num_of_tokens()
-
-    return _make_function_repo_helper(vec_funcs, vocab, num_of_tokens, [f], dim, num_of_rnd_walks, 1)
+    vocab: Dict[str, Token] = dict(**vocabulary)
+    return _make_function_repo_helper(vocab, [f], dim, num_of_rnd_walks, 1)

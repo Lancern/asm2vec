@@ -19,11 +19,12 @@ def main():
     print('# of estimating functions:', len(estimating_funcs))
 
     model = asm2vec.model.Asm2Vec(d=200)
-    training_funcs_vec = model.train(training_funcs)
+    training_repo = model.make_function_repo(training_funcs)
+    model.train(training_repo)
     print('Training complete.')
 
-    for (tf, tfv) in zip(training_funcs, training_funcs_vec):
-        print('Norm of trained function "{}" = {}'.format(tf.name(), np.linalg.norm(tfv)))
+    for tf in training_repo.funcs():
+        print('Norm of trained function "{}" = {}'.format(tf.sequential().func().name(), np.linalg.norm(tf.v)))
 
     estimating_funcs_vec = list(map(lambda f: model.to_vec(f), estimating_funcs))
     print('Estimating complete.')
@@ -31,10 +32,10 @@ def main():
     for (ef, efv) in zip(estimating_funcs, estimating_funcs_vec):
         print('Norm of trained function "{}" = {}'.format(ef.name(), np.linalg.norm(efv)))
 
-    for (tf, tfv) in zip(training_funcs, training_funcs_vec):
+    for tf in training_repo.funcs():
         for (ef, efv) in zip(estimating_funcs, estimating_funcs_vec):
-            sim = cosine_similarity(tfv, efv)
-            print('sim("{}", "{}") = {}'.format(tf.name(), ef.name(), sim))
+            sim = cosine_similarity(tf.v, efv)
+            print('sim("{}", "{}") = {}'.format(tf.sequential().func().name(), ef.name(), sim))
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 import unittest as ut
 
-import asm2vec.internal.utilities as utilities
+import asm2vec.internal.util as utilities
 
 
 class PermutationTest(ut.TestCase):
