@@ -1,5 +1,6 @@
 from typing import *
 import math
+import threading
 
 import numpy as np
 
@@ -9,6 +10,7 @@ from asm2vec.internal.repr import VectorizedFunction
 from asm2vec.internal.repr import Token
 from asm2vec.internal.repr import VectorizedToken
 from asm2vec.internal.sampling import NegativeSampler
+from asm2vec.internal.atomic import LockContextManager
 from asm2vec.logging import asm2vec_logger
 
 
@@ -103,21 +105,25 @@ class SequenceWindow:
 
 class TrainingContext:
     class Counter:
-        def __init__(self, name: str, initial: int = 0):
+        def __init__(self, context: 'TrainingContext', name: str, initial: int = 0):
+            self._context = context
             self._name = name
             self._val = initial
 
         def val(self) -> int:
-            return self._val
+            with self._context.lock():
+                return self._val
 
         def inc(self) -> int:
-            self._val += 1
-            return self._val
+            with self._context.lock():
+                self._val += 1
+                return self._val
 
         def reset(self) -> int:
-            v = self._val
-            self._val = 0
-            return v
+            with self._context.lock():
+                v = self._val
+                self._val = 0
+                return v
 
     TOKENS_HANDLED_COUNTER: str = "tokens_handled"
 
@@ -128,6 +134,7 @@ class TrainingContext:
         self._sampler = NegativeSampler(list(map(lambda t: (t, t.frequency), repo.vocab().values())))
         self._is_estimating = is_estimating
         self._counters = dict()
+        self._lock = threading.Lock()
 
     def repo(self) -> FunctionRepository:
         return self._repo
@@ -135,11 +142,16 @@ class TrainingContext:
     def params(self) -> Asm2VecParams:
         return self._params
 
+    def lock(self) -> LockContextManager:
+        return LockContextManager(self._lock)
+
     def alpha(self) -> float:
-        return self._alpha
+        with self.lock():
+            return self._alpha
 
     def set_alpha(self, alpha: float) -> None:
-        self._alpha = alpha
+        with self.lock():
+            self._alpha = alpha
 
     def sampler(self) -> NegativeSampler:
         return self._sampler
@@ -151,12 +163,14 @@ class TrainingContext:
         return SequenceWindow(seq, self._repo.vocab())
 
     def get_counter(self, name: str) -> Counter:
-        return self._counters.get(name)
+        with self.lock():
+            return self._counters.get(name)
 
     def add_counter(self, name: str, initial: int = 0) -> Counter:
-        c = self.__class__.Counter(name, initial)
-        self._counters[name] = c
-        return c
+        with self.lock():
+            c = self.__class__.Counter(self, name, initial)
+            self._counters[name] = c
+            return c
 
 
 def _sigmoid(x: float) -> float:
@@ -199,13 +213,13 @@ def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: Train
             sampled_tokens[tk.name()] = tk
 
         # The following code block tries to update the learning rate when necessary. Not required for now.
-        # tokens_handled_counter = context.get_counter(TrainingContext.TOKENS_HANDLED_COUNTER)
-        # if tokens_handled_counter is not None:
-        #     if tokens_handled_counter.val() % context.params().alpha_update_interval == 0:
-        #         # Update the learning rate.
-        #         alpha = 1 - tokens_handled_counter.val() / (
-        #                 context.params().iteration * context.repo().num_of_tokens() + 1)
-        #         context.set_alpha(max(alpha, context.params().initial_alpha * 0.0001))
+        tokens_handled_counter = context.get_counter(TrainingContext.TOKENS_HANDLED_COUNTER)
+        if tokens_handled_counter is not None:
+            if tokens_handled_counter.val() % context.params().alpha_update_interval == 0:
+                # Update the learning rate.
+                alpha = 1 - tokens_handled_counter.val() / (
+                        context.params().iteration * context.repo().num_of_tokens() + 1)
+                context.set_alpha(max(alpha, context.params().initial_alpha * 0.0001))
 
         for sp_tk in sampled_tokens.values():
             # Accumulate gradient for function vector.
@@ -213,27 +227,30 @@ def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: Train
             f_grad += g / 3 * tk.v_pred
 
             if not context.is_estimating():
-                # Update v'_t
-                tk.v_pred -= g * delta
+                with context.lock():
+                    # Update v'_t
+                    tk.v_pred -= g * delta
 
     # Apply function gradient.
-    f.v -= f_grad
+    with context.lock():
+        f.v -= f_grad
 
     if not context.is_estimating():
         # Apply gradient to instructions.
         d = len(f_grad) // 2
 
-        wnd.prev_ins_op().v -= f_grad[:d]
-        if len(wnd.prev_ins_args()) > 0:
-            prev_args_grad = f_grad[d:] / len(wnd.prev_ins_args())
-            for t in wnd.prev_ins_args():
-                t.v -= prev_args_grad
+        with context.lock():
+            wnd.prev_ins_op().v -= f_grad[:d]
+            if len(wnd.prev_ins_args()) > 0:
+                prev_args_grad = f_grad[d:] / len(wnd.prev_ins_args())
+                for t in wnd.prev_ins_args():
+                    t.v -= prev_args_grad
 
-        wnd.next_ins_op().v -= f_grad[:d]
-        if len(wnd.next_ins_args()) > 0:
-            next_args_grad = f_grad[d:] / len(wnd.next_ins_args())
-            for t in wnd.next_ins_args():
-                t.v -= next_args_grad
+            wnd.next_ins_op().v -= f_grad[:d]
+            if len(wnd.next_ins_args()) > 0:
+                next_args_grad = f_grad[d:] / len(wnd.next_ins_args())
+                for t in wnd.next_ins_args():
+                    t.v -= next_args_grad
 
 
 def _train_sequence(f: VectorizedFunction, seq: List[Instruction], context: TrainingContext) -> None:

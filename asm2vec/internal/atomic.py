@@ -2,30 +2,44 @@ from typing import *
 import threading
 
 
+class LockContextManager:
+    def __init__(self, lock: threading.Lock):
+        self._lock = lock
+        self._exited = False
+
+    def __enter__(self):
+        self._lock.acquire()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._exited = True
+        self._lock.release()
+
+    def exited(self) -> bool:
+        return self._exited
+
+
 class Atomic:
-    class AtomicContextManager:
+    class AtomicContextManager(LockContextManager):
         def __init__(self, atomic: 'Atomic'):
+            super().__init__(atomic._lock)
             self._atomic = atomic
             self._exited = False
 
         def __enter__(self):
-            self._atomic._lock.acquire()
+            super().__enter__()
             return self
 
         def __exit__(self, exc_type, exc_val, exc_tb):
-            self._exited = True
-            self._atomic._lock.release()
-
-        def _ensure_not_exited(self) -> None:
-            if self._exited:
-                raise RuntimeError('Trying to access AtomicContextManager after its exit.')
+            super().__exit__(exc_type, exc_val, exc_tb)
 
         def value(self) -> Any:
-            self._ensure_not_exited()
+            if self.exited():
+                raise RuntimeError('Trying to access AtomicContextManager after its exit.')
             return self._atomic._val
 
         def set(self, value: Any) -> None:
-            self._ensure_not_exited()
+            if self.exited():
+                raise RuntimeError('Trying to access AtomicContextManager after its exit.')
             self._atomic._val = value
 
     def __init__(self, value: Any):
