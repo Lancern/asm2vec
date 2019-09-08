@@ -1,6 +1,7 @@
 from typing import *
 import math
 import threading
+import concurrent.futures
 
 import numpy as np
 
@@ -11,6 +12,7 @@ from asm2vec.internal.repr import Token
 from asm2vec.internal.repr import VectorizedToken
 from asm2vec.internal.sampling import NegativeSampler
 from asm2vec.internal.atomic import LockContextManager
+from asm2vec.internal.atomic import Atomic
 from asm2vec.logging import asm2vec_logger
 
 
@@ -264,15 +266,25 @@ def train(repository: FunctionRepository, params: Asm2VecParams) -> None:
     context.add_counter(TrainingContext.TOKENS_HANDLED_COUNTER)
 
     asm2vec_logger().debug('Total number of functions: %d', len(context.repo().funcs()))
-    progress = 1
+    progress = Atomic(1)
 
+    def train_function(fn: VectorizedFunction):
+        for seq in fn.sequential().sequences():
+            _train_sequence(fn, seq, context)
+
+        asm2vec_logger().debug('Function "%s" trained, progress: %f%',
+                               fn.sequential().name(), progress.value() / len(context.repo().funcs()) * 100)
+        with progress.lock() as prog_proxy:
+            prog_proxy.set(prog_proxy.value() + 1)
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=context.params().jobs)
+    futures = []
     for f in context.repo().funcs():
-        for seq in f.sequential().sequences():
-            _train_sequence(f, seq, context)
+        futures.append(executor.submit(train_function, f))
 
-        asm2vec_logger().debug('Function "%s" trained, progress: %f%%',
-                               f.sequential().name(), progress / len(context.repo().funcs()) * 100)
-        progress += 1
+    done, not_done = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_EXCEPTION)
+    if len(not_done) > 0:
+        raise RuntimeError('Train failed due to one or more failed task.')
 
 
 def estimate(f: VectorizedFunction, estimate_repo: FunctionRepository, params: Asm2VecParams) -> np.ndarray:
