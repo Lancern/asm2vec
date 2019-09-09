@@ -176,10 +176,7 @@ class TrainingContext:
 
 
 def _sigmoid(x: float) -> float:
-    e = np.exp(x)
-    if math.isinf(e):
-        return 1 if e > 0 else 0
-    return e / (1 + e)
+    return 1 / (1 + np.exp(x))
 
 
 def _identity(cond: bool) -> int:
@@ -215,13 +212,13 @@ def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: Train
             sampled_tokens[tk.name()] = tk
 
         # The following code block tries to update the learning rate when necessary. Not required for now.
-        tokens_handled_counter = context.get_counter(TrainingContext.TOKENS_HANDLED_COUNTER)
-        if tokens_handled_counter is not None:
-            if tokens_handled_counter.val() % context.params().alpha_update_interval == 0:
-                # Update the learning rate.
-                alpha = 1 - tokens_handled_counter.val() / (
-                        context.params().iteration * context.repo().num_of_tokens() + 1)
-                context.set_alpha(max(alpha, context.params().initial_alpha * 0.0001))
+        # tokens_handled_counter = context.get_counter(TrainingContext.TOKENS_HANDLED_COUNTER)
+        # if tokens_handled_counter is not None:
+        #     if tokens_handled_counter.val() % context.params().alpha_update_interval == 0:
+        #         # Update the learning rate.
+        #         alpha = 1 - tokens_handled_counter.val() / (
+        #                 context.params().iteration * context.repo().num_of_tokens() + 1)
+        #         context.set_alpha(max(alpha, context.params().initial_alpha * 0.0001))
 
         for sp_tk in sampled_tokens.values():
             # Accumulate gradient for function vector.
@@ -272,7 +269,7 @@ def train(repository: FunctionRepository, params: Asm2VecParams) -> None:
         for seq in fn.sequential().sequences():
             _train_sequence(fn, seq, context)
 
-        asm2vec_logger().debug('Function "%s" trained, progress: %f%',
+        asm2vec_logger().debug('Function "%s" trained, progress: %f%%',
                                fn.sequential().name(), progress.value() / len(context.repo().funcs()) * 100)
         with progress.lock() as prog_proxy:
             prog_proxy.set(prog_proxy.value() + 1)
