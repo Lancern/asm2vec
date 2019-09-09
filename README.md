@@ -119,15 +119,15 @@ You can serialize two data structures to primitive data: the function repository
 
 The constructor of `asm2vec.model.Asm2Vec` class accepts some keyword arguments as hyper parameters of the model. The following table lists all the hyper parameters available:
 
-| Parameter Name          | Type    | Meaning                                                                                                                        | Default Value |
-| ----------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| `d`                     | `int`   | The dimention of the vectors for tokens.                                                                                       | `200`         |
-| `initial_alpha`         | `float` | The initial learning rate.                                                                                                     | `0.05`        |
-| `alpha_update_interval` | `int`   | How many tokens can be processed before changing the learning rate?                                                            | `10000`       |
-| `rnd_walks`             | `int`   | How many random walks to perform to sequentialize a function?                                                                  | `3`           |
-| `neg_samples`           | `int`   | How many samples to take during negative sampling?                                                                             | `25`          |
-| `iteration`             | `int`   | How many iterations to perform? (This parameter is reserved for future use and is not implemented now)                         | `1`           |
-| `jobs`                  | `int`   | How many tasks to execute concurrently during training? (This parameter is reserved for future use and is not implemented now) | `4`           |
+| Parameter Name          | Type    | Meaning                                                                                                | Default Value |
+| ----------------------- | ------- | ------------------------------------------------------------------------------------------------------ | ------------- |
+| `d`                     | `int`   | The dimention of the vectors for tokens.                                                               | `200`         |
+| `initial_alpha`         | `float` | The initial learning rate.                                                                             | `0.05`        |
+| `alpha_update_interval` | `int`   | How many tokens can be processed before changing the learning rate?                                    | `10000`       |
+| `rnd_walks`             | `int`   | How many random walks to perform to sequentialize a function?                                          | `3`           |
+| `neg_samples`           | `int`   | How many samples to take during negative sampling?                                                     | `25`          |
+| `iteration`             | `int`   | How many iterations to perform? (This parameter is reserved for future use and is not implemented now) | `1`           |
+| `jobs`                  | `int`   | How many tasks to execute concurrently during training?                                                | `4`           |
 
 ## Notes
 
