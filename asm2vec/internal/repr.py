@@ -87,7 +87,7 @@ def _make_function_repo_helper(vocab: Dict[str, Token], funcs: List[Function],
 
     def func_handler(f: Function):
         with vec_funcs_atomic.lock() as vfa:
-            vfa.value().append(VectorizedFunction(make_sequential_function(f, num_of_rnd_walks)))
+            vfa.value().append(VectorizedFunction(make_sequential_function(f, num_of_rnd_walks), dim=dim*2))
 
         tokens = _get_function_tokens(f, dim)
         for tk in tokens:
