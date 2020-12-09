@@ -185,7 +185,7 @@ class TrainingContext:
 
 
 def _sigmoid(x: float) -> float:
-    return 1 / (1 + np.exp(x))
+    return 1 / (1 + np.exp(-x))
 
 
 def _identity(cond: bool) -> int:
@@ -231,7 +231,7 @@ def _train_vectorized(wnd: SequenceWindow, f: VectorizedFunction, context: Train
 
         for sp_tk in sampled_tokens.values():
             # Accumulate gradient for function vector.
-            g = (_identity(tk is sp_tk) - _dot_sigmoid(delta, tk.v_pred)) * context.alpha()
+            g = (_dot_sigmoid(delta, tk.v_pred) - _identity(tk is sp_tk)) * context.alpha()
             f_grad += g / 3 * tk.v_pred
 
             if not context.is_estimating():
